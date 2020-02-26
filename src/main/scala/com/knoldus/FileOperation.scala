@@ -5,7 +5,7 @@ import java.io.{File, FileNotFoundException}
 
 import akka.actor.SupervisorStrategy.{Escalate, Restart, Resume, Stop}
 import com.typesafe.config.ConfigFactory
-import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, OneForOneStrategy, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, OneForOneStrategy, Props, SupervisorStrategy}
 import akka.util.Timeout
 import akka.pattern.ask
 
@@ -28,14 +28,6 @@ case class LogStatus(file: String, error: Int, warnings: Int, info: Int)
  */
 class FileOperation extends Actor with ActorLogging {
   val entries=10
-  override val supervisorStrategy =
-
-    OneForOneStrategy(maxNrOfRetries = entries, withinTimeRange = 1.minute) {
-      case _: FileNotFoundException => Resume
-      case _: IllegalArgumentException => Stop
-      case _: Exception => Escalate
-    }
-
 
   override def receive: Receive = {
     case file: File =>
@@ -137,7 +129,16 @@ object FileOperation extends App {
   val system = ActorSystem("LogFilesActorSystem", config.getConfig("configuration"))
   val confStr = "fixed-dispatcher"
   val actor = 3
-  val ref = system.actorOf(RoundRobinPool(actor).props(Props[FileOperation] withDispatcher (confStr)), "FileOperation")
+
+    def strategy:SupervisorStrategy={
+      val entries=10
+      OneForOneStrategy (maxNrOfRetries = entries, withinTimeRange = 1.minute) {
+      case _: FileNotFoundException => Resume
+      case _: IllegalArgumentException => Stop
+      case _: Exception => Escalate
+    }
+    }
+  val ref = system.actorOf(RoundRobinPool(actor,supervisorStrategy = strategy).props(Props[FileOperation] withDispatcher (confStr)), "FileOperation")
 
   import system.dispatcher
 
@@ -147,9 +148,8 @@ object FileOperation extends App {
   implicit val timeout = Timeout(5. seconds)
   // for (filesOrFolders <- filesOrFoldersList){
   //  ref ! filesOrFolders
-  system.scheduler.scheduleOnce(5.seconds) {
 
+   val cancellable= filesOrFoldersList.map(filesOrFolders =>system.scheduler.scheduleAtFixedRate(0.seconds,3.seconds,ref,filesOrFolders))
 
-    filesOrFoldersList.map(filesOrFolders => ref ! filesOrFolders)
-  }
 }
+
