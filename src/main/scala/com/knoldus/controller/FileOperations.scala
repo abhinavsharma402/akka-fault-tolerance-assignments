@@ -4,7 +4,7 @@ import java.io.{File, FileNotFoundException}
 
 import akka.actor.SupervisorStrategy.{Escalate, Stop}
 import akka.actor.{Actor, ActorLogging, ActorSystem, OneForOneStrategy, Props, SupervisorStrategy}
-import akka.pattern.ask
+import akka.pattern.{ask,pipe}
 import akka.routing.RoundRobinPool
 import akka.util.Timeout
 import com.knoldus.modules
@@ -43,11 +43,13 @@ class MainActor extends Actor with ActorLogging {
         fileOperations ? file
         }.mapTo[LogStatus])
       val futureResult = Future.sequence(result)
-      futureResult.map(logStatusList => {
+      val finalAverage=futureResult.map(logStatusList => {
         val totalWarnings = logStatusList.foldLeft(0) { (sum, ele) => sum + ele.warnings }
         val averageWarnings = totalWarnings / logStatusList.length
         log.info(s"average warnings $averageWarnings")
+        averageWarnings
       })
+      finalAverage.pipeTo(sender())
     case _=>throw new Exception
   }
 }
